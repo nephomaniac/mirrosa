@@ -138,7 +138,6 @@ func (s SecurityGroup) CheckExpectedGroups(ctx context.Context) (map[string]*sec
 	expectedGroups[NodeRoleKey] = s.GetSecurityGroupByNameTags(nodeTags, NodeRoleKey, ctx)
 	expectedGroups[ApiServerLbRoleKey] = s.GetSecurityGroupByNameTags(apiServerLbTags, ApiServerLbRoleKey, ctx)
 	expectedGroups[LbRoleKey] = s.GetSecurityGroupByNameTags(lbTags, LbRoleKey, ctx)
-	expectedGroups["faketest"] = s.GetSecurityGroupByNameTags([]string{"faketest"}, "faketest", ctx)
 
 	// Color table output red for failed cases, green for passing cases.
 	red := color.New(color.FgHiRed, color.BgBlack)
@@ -481,7 +480,7 @@ func (s SecurityGroup) generateExpectedControlPlaneRules(ipv4Cidr string, refGro
 	}
 	if len(refGroups) > 0 {
 		// control-plane security group allows etcd, and kub-api traffic from the provided SG refs...
-		for _, groupKey := range []string{ControlPlaneRoleKey, ApiServerLbRoleKey, NodeRoleKey, "faketest"} {
+		for _, groupKey := range []string{ControlPlaneRoleKey, ApiServerLbRoleKey, NodeRoleKey} {
 			refGroup := refGroups[groupKey]
 			etcdRuleKey := fmt.Sprintf("etcd-%s", refGroup.Role)
 			kubeApiRuleKey := fmt.Sprintf("kube-apiserver-%s", refGroup.Role)
