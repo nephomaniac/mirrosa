@@ -16,6 +16,7 @@ import (
 // Client holds relevant information about a ROSA cluster gleaned from OCM and an AwsApi to validate the cluster in AWS
 type Client struct {
 	log *slog.Logger
+	ctx context.Context
 
 	// Cluster holds a cluster object from OCM
 	Cluster *cmv1.Cluster
@@ -40,6 +41,21 @@ type ClusterInfo struct {
 
 	// VpcId is the AWS ID of the VPC the cluster is installed in
 	VpcId string
+}
+
+type ValidationResult struct {
+	// Name of validation (ie 'CheckingVPC')
+	Name string
+	// Category of validation (ie 'VPC')
+	Category string
+	// Arbitrary key:value map to be used for filtering, etc..
+	Tags map[string]string
+	// Simple description of what this check is attempting to do
+	CheckDescription string
+	// Simple explantion of what the result outcome means (pass or fail) to the cluster/env
+	ResultSummary string
+	// Actual error encountered or nil if no error
+	Error error
 }
 
 func (c ClusterInfo) LogValue() slog.Value {
@@ -162,11 +178,17 @@ func (c *Client) FindVpcId(ctx context.Context) error {
 
 // ValidateComponents wraps the Validate method on one or many Component(s)
 func (c *Client) ValidateComponents(ctx context.Context, components ...Component) error {
+	var errs error = nil
 	for _, component := range components {
+		c.log.Info("----------------------------------------------------------------")
 		if err := component.Validate(ctx); err != nil {
-			return fmt.Errorf("%s: %w", component.Description(), err)
+			c.log.Info("Error but still going....")
+			c.log.Error(fmt.Sprintf("%s", err))
+			errs = fmt.Errorf("%s. %s: %w", component.Description(), errs, err)
+			//return fmt.Errorf("%s: %w", component.Description(), err)
 		}
 	}
-
-	return nil
+	c.log.Info("----------------------------------------------------------------")
+	return errs
+	//return nil
 }

@@ -48,7 +48,10 @@ func (c *Client) NewVpc() Vpc {
 
 func (v Vpc) Validate(ctx context.Context) error {
 	v.log.Info("validating vpc", slog.String("id", v.Id))
-
+	/*https://docs.aws.amazon.com/glue/latest/dg/set-up-vpc-dns.html
+	     * To set up DNS in your VPC, ensure that DNS hostnames and DNS resolution are both enabled in your VPC.
+		 * The VPC network attributes enableDnsHostnames and enableDnsSupport must be set to true.
+	*/
 	v.log.Debug("validating that enableDnsHostnames is true", slog.String("id", v.Id))
 	dnsHostnames, err := v.Ec2Client.DescribeVpcAttribute(ctx, &ec2.DescribeVpcAttributeInput{
 		Attribute: types.VpcAttributeNameEnableDnsHostnames,
