@@ -2,7 +2,6 @@ package mirrosa
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -103,7 +102,7 @@ func (s SecurityGroup) GetSecurityGroupByNameTags(nameTags []string, role string
 	}
 	switch len(resp.SecurityGroups) {
 	case 0:
-		filterJson, _ := getJsonBytes(filter, s.log)
+		filterJson, _ := GetJsonBytes(filter, s.log)
 		s.log.Error(fmt.Sprintf("security group for '%s' not found with filters:'%s'", role, filterJson))
 		expGroupObj.Error = fmt.Errorf("security group for '%s' not found", role)
 	case 1:
@@ -111,7 +110,7 @@ func (s SecurityGroup) GetSecurityGroupByNameTags(nameTags []string, role string
 		expGroupObj.ID = *resp.SecurityGroups[0].GroupId
 		expGroupObj.Group = &resp.SecurityGroups[0]
 	default:
-		filterJson, _ := getJsonBytes(filter, s.log)
+		filterJson, _ := GetJsonBytes(filter, s.log)
 		s.log.Error(fmt.Sprintf("multiple security groups found for '%s', using filters:'%s'", role, filterJson))
 		expGroupObj.Error = fmt.Errorf("multiple security groups found for '%s'", role)
 	}
@@ -148,7 +147,7 @@ func (s SecurityGroup) CheckExpectedGroups(ctx context.Context) (map[string]*sec
 	summaryTable := tablewriter.NewWriter(os.Stdout)
 	summaryTable.SetHeader([]string{"Role", "SecurityGroupID", "SGName", "Errors"})
 	summaryTable.SetBorders(tablewriter.Border{Left: false, Top: true, Right: false, Bottom: false})
-	summaryTable.SetCaption(true, blue.Sprint("Expected Security Groups Found Validation Table"))
+	summaryTable.SetCaption(true, blue.Sprint("Ensure The Expected Security Groups ARE Found"))
 
 	var rowColor *color.Color
 
@@ -226,7 +225,7 @@ func (s SecurityGroup) ValidateSecurityGroupRules(sgWrapper *securityGroupWrappe
 	summaryTable := tablewriter.NewWriter(os.Stdout)
 	summaryTable.SetHeader([]string{"Key", "Proto", "Egress", "Port Range", "Allowed Source", "SG Rules Found"})
 	summaryTable.SetBorders(tablewriter.Border{Left: false, Top: true, Right: false, Bottom: false})
-	summaryTable.SetCaption(true, blue.Sprintf("Control Plane '%s' Rules Validation Table", *sgWrapper.Group.GroupName))
+	summaryTable.SetCaption(true, blue.Sprintf("Ensure Expected Control Plane Rules Are Satisfied By One Or More Rules In SG:'%s'", *sgWrapper.Group.GroupName))
 
 	var rowColor *color.Color
 
@@ -372,14 +371,6 @@ func containsNetwork(cidrA string, cidrB string) (bool, error) {
 	return false, nil
 }
 
-func getJsonBytes(rule interface{}, log *slog.Logger) ([]byte, error) {
-	jsonOutput, err := json.Marshal(rule)
-	if err != nil && log != nil {
-		log.Debug("Error mashalling SecurityGroup json", slog.String("error", fmt.Sprintf("%v", err)))
-	}
-	return jsonOutput, err
-}
-
 // Check if this rule matches or permits (more permissive) then our expected rule
 func compareSecurityGroupRules(expected securityGroupValidationRule, actual types.SecurityGroupRule, log *slog.Logger) bool {
 	log.Debug("Checking security group rule", slog.String("GroupId", *actual.GroupId), slog.String("RuleId", *actual.SecurityGroupRuleId))
@@ -433,7 +424,7 @@ func compareSecurityGroupRules(expected securityGroupValidationRule, actual type
 			return false
 		}
 	}
-	ruleJson, err := getJsonBytes(actual, log)
+	ruleJson, err := GetJsonBytes(actual, log)
 	if err != nil {
 		ruleJson = []byte(fmt.Sprintf("json marshal err: %s", err))
 	}

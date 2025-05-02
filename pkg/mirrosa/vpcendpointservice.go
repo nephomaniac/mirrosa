@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"log/slog"
+	"github.com/fatih/color"
+	"github.com/olekukonko/tablewriter"
 )
 
 const vpceServiceDescription = "A VPC Endpoint Service allows for a load balancer to be exposed through PrivateLink, AWS' internal network, to other AWS accounts via VPC Endpoints [1]. " +
@@ -48,6 +52,15 @@ func (v VpcEndpointService) Validate(ctx context.Context) error {
 		return nil
 	}
 
+	var ErrSummary error = nil
+	connectionIds := []string{}
+	found := false
+	// Create summary table to make results easier to parse from debug output...
+	red := color.New(color.FgHiRed, color.BgBlack)
+	green := color.New(color.FgHiGreen, color.BgBlack)
+	blue := color.New(color.FgHiBlue, color.BgBlack)
+	var rowColor *color.Color = green
+
 	v.log.Info("searching for PrivateLink VPC Endpoint Service", slog.String("name", fmt.Sprintf("%s-vpc-endpoint-service", v.InfraName)))
 	var serviceId string
 	resp, err := v.Ec2Client.DescribeVpcEndpointServices(ctx, &ec2.DescribeVpcEndpointServicesInput{
@@ -63,45 +76,72 @@ func (v VpcEndpointService) Validate(ctx context.Context) error {
 		},
 	})
 	if err != nil {
-		return err
+		ErrSummary = errors.Join(ErrSummary, err)
 	}
 
 	switch len(resp.ServiceDetails) {
 	case 0:
-		return errors.New("no VPC Endpoint Services found for PrivateLink cluster")
+		ErrSummary = errors.Join(ErrSummary, errors.New("no VPC Endpoint Services found for PrivateLink cluster"))
 	case 1:
 		v.log.Info("found VPC Endpoint Service", slog.String("id", *resp.ServiceDetails[0].ServiceId))
 		serviceId = *resp.ServiceDetails[0].ServiceId
+		found = true
 	default:
-		return errors.New("multiple VPC Endpoint Services found for PrivateLink cluster")
+		ErrSummary = errors.Join(ErrSummary, errors.New("multiple VPC Endpoint Services found for PrivateLink cluster"))
+		found = true
 	}
-
-	v.log.Info("validating VPC Endpoint Service", slog.String("id", *resp.ServiceDetails[0].ServiceId))
-	cxResp, err := v.Ec2Client.DescribeVpcEndpointConnections(ctx, &ec2.DescribeVpcEndpointConnectionsInput{
-		Filters: []types.Filter{
-			{
-				Name:   aws.String("service-id"),
-				Values: []string{serviceId},
+	if len(serviceId) > 0 {
+		v.log.Info("validating VPC Endpoint Service", slog.String("id", *resp.ServiceDetails[0].ServiceId))
+		cxResp, err := v.Ec2Client.DescribeVpcEndpointConnections(ctx, &ec2.DescribeVpcEndpointConnectionsInput{
+			Filters: []types.Filter{
+				{
+					Name:   aws.String("service-id"),
+					Values: []string{serviceId},
+				},
+				{
+					Name:   aws.String("vpc-endpoint-state"),
+					Values: []string{"available"},
+				},
 			},
-			{
-				Name:   aws.String("vpc-endpoint-state"),
-				Values: []string{"available"},
-			},
-		},
-	})
-	if err != nil {
-		return err
-	}
+		})
+		if err != nil {
+			ErrSummary = errors.Join(ErrSummary, err)
+		} else {
+			switch len(cxResp.VpcEndpointConnections) {
+			case 0:
+				ErrSummary = errors.Join(ErrSummary, fmt.Errorf("no available VPC Endpoint connections found for %s", serviceId))
+			case 1:
+				v.log.Info("validated that one accepted VPC Endpoint connection exists", slog.String("id", serviceId))
+				for _, endPt := range cxResp.VpcEndpointConnections {
+					connectionIds = append(connectionIds, fmt.Sprintf("%s/%s", *endPt.VpcEndpointId, *endPt.VpcEndpointConnectionId))
+				}
 
-	switch len(cxResp.VpcEndpointConnections) {
-	case 0:
-		return fmt.Errorf("no available VPC Endpoint connections found for %s", serviceId)
-	case 1:
-		v.log.Info("validated that one accepted VPC Endpoint connection exists", slog.String("id", serviceId))
-		return nil
-	default:
-		return fmt.Errorf("multiple available VPC Endpoint connections found for %s", serviceId)
+			default:
+				ErrSummary = errors.Join(ErrSummary, fmt.Errorf("multiple available VPC Endpoint connections found for %s", serviceId))
+			}
+		}
 	}
+	if ErrSummary != nil {
+		rowColor = red
+	}
+	summaryTable := tablewriter.NewWriter(os.Stdout)
+	summaryTable.SetHeader([]string{"VPC ENDPOINT SVC", "FOUND", "AVAIL CONNS", "ERRORS"})
+	summaryTable.SetBorders(tablewriter.Border{Left: false, Top: true, Right: false, Bottom: false})
+	summaryTable.SetCaption(true, blue.Sprint("Ensure PrivateLink Cluster's AWS VPC Endpoint Service"))
+	connJson, _ := GetJsonBytes(connectionIds, v.log)
+	summaryTable.Append([]string{rowColor.Sprintf("%s", serviceId),
+		rowColor.Sprintf("%t", found),
+		rowColor.Sprintf("%s", connJson),
+		rowColor.Sprintf("%v", ErrSummary)})
+	//Colors in the footer can cause the row to fail to render properly
+	var result string = "PASS"
+	if ErrSummary != nil {
+		result = "FAIL"
+	}
+	summaryTable.SetFooter([]string{"", "", "VPC PRIVATELINK ENDPOINT SERVICE RESULT", result})
+	summaryTable.Render()
+	fmt.Fprintf(os.Stdout, "\n")
+	return ErrSummary
 }
 
 func (v VpcEndpointService) Description() string {
