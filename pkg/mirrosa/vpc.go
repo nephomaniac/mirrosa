@@ -32,9 +32,8 @@ type MirrosaVpcAPIClient interface {
 }
 
 type Vpc struct {
-	log *slog.Logger
-	Id  string
-
+	log       *slog.Logger
+	Id        string
 	Ec2Client MirrosaVpcAPIClient
 }
 
