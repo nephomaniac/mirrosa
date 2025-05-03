@@ -225,7 +225,7 @@ func (s SecurityGroup) ValidateSecurityGroupRules(sgWrapper *securityGroupWrappe
 	summaryTable := tablewriter.NewWriter(os.Stdout)
 	summaryTable.SetHeader([]string{"Key", "Proto", "Egress", "Port Range", "Allowed Source", "SG Rules Found"})
 	summaryTable.SetBorders(tablewriter.Border{Left: false, Top: true, Right: false, Bottom: false})
-	summaryTable.SetCaption(true, blue.Sprintf("Ensure Expected Control Plane Rules Are Satisfied By One Or More Rules In SG:'%s'", *sgWrapper.Group.GroupName))
+	summaryTable.SetCaption(true, blue.Sprintf("Ensure Expected Control Plane Rules Are Satisfied By One Or More Rules In SG:'%s/%s'", *sgWrapper.Group.GroupName, sgWrapper.ID))
 
 	var rowColor *color.Color
 
